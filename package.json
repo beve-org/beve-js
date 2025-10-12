@@ -1,0 +1,75 @@
+{
+  "name": "beve",
+  "version": "1.0.0",
+  "description": "High performance, tagged binary data specification - Binary Efficient Versatile Encoding for JavaScript/TypeScript",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "bin": {
+    "beve-benchmark": "./dist/benchmark.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && npm run build:cjs",
+    "build:cjs": "tsc --module commonjs --outDir dist/cjs && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "benchmark": "tsx src/benchmark.ts",
+    "benchmark:prod": "npm run build && node dist/benchmark.js",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "test:beve-vs-json": "bun test tests/beve-vs-json.test.ts",
+    "test:file-io": "bun test tests/file-io.test.ts",
+    "test:realistic": "bun test tests/realistic-data.test.ts",
+    "demo": "bun run demo-faker.ts",
+    "prepublishOnly": "npm run build",
+    "watch": "tsc --watch"
+  },
+  "keywords": [
+    "beve",
+    "binary",
+    "serialization",
+    "encoding",
+    "decoding",
+    "messagepack",
+    "cbor",
+    "performance",
+    "simd",
+    "scientific-computing",
+    "typed-arrays",
+    "little-endian",
+    "buffer"
+  ],
+  "author": "beve-org",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beve-org/beve-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/beve-org/beve-js/issues"
+  },
+  "homepage": "https://github.com/beve-org/beve-js#readme",
+  "devDependencies": {
+    "@faker-js/faker": "^10.0.0",
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
