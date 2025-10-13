@@ -1,8 +1,8 @@
 {
   "name": "beve",
-  "version": "1.0.0",
-  "description": "High performance, tagged binary data specification - Binary Efficient Versatile Encoding for JavaScript/TypeScript",
-  "main": "dist/index.js",
+  "version": "1.0.3",
+  "description": "High performance binary serialization with WebAssembly acceleration - Binary Efficient Versatile Encoding for JavaScript/TypeScript",
+  "main": "dist/cjs/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -10,7 +10,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "require": "./dist/cjs/index.js"
     }
   },
   "bin": {
@@ -18,6 +18,7 @@
   },
   "files": [
     "dist",
+    "wasm",
     "README.md",
     "LICENSE"
   ],
@@ -27,6 +28,7 @@
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
     "benchmark": "tsx src/benchmark.ts",
+    "benchmark:wasm": "tsx src/wasm-benchmark.ts",
     "benchmark:prod": "npm run build && node dist/benchmark.js",
     "test": "bun test",
     "test:watch": "bun test --watch",
@@ -34,6 +36,7 @@
     "test:beve-vs-json": "bun test tests/beve-vs-json.test.ts",
     "test:file-io": "bun test tests/file-io.test.ts",
     "test:realistic": "bun test tests/realistic-data.test.ts",
+    "test:wasm": "bun test tests/wasm-integration.test.ts",
     "demo": "bun run demo-faker.ts",
     "prepublishOnly": "npm run build",
     "watch": "tsc --watch"
@@ -47,13 +50,15 @@
     "messagepack",
     "cbor",
     "performance",
+    "wasm",
+    "webassembly",
     "simd",
     "scientific-computing",
     "typed-arrays",
     "little-endian",
     "buffer"
   ],
-  "author": "beve-org",
+  "author": "Burak Şentürk <buraksenturk25@gmail.com> (https://github.com/meftunca)",
   "license": "MIT",
   "repository": {
     "type": "git",

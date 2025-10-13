@@ -1,9 +1,21 @@
 # BEVE - Binary Efficient Versatile Encoding
-Version 1.0
+Version 1.0 · **🚀 Now with WebAssembly Support!**
 
 *High performance, tagged binary data specification like JSON, MessagePack, CBOR, etc. But, designed for higher performance and scientific computing.*
 
 > See [Discussions](https://github.com/stephenberry/eve/discussions) for polls and active development on the specification.
+
+## ✨ New: WebAssembly Acceleration
+
+BEVE-JS now includes **automatic WebAssembly acceleration** for maximum performance! The library automatically uses WASM when available and gracefully falls back to TypeScript when not.
+
+🎯 **Features:**
+- 🚀 **1.5x faster** with WASM acceleration
+- 🔄 **Zero configuration** - automatic detection and fallback
+- 🌐 **Universal** - works in Node.js, Browser, and edge runtimes
+- 📦 **Same API** - no code changes needed
+
+[📚 See WASM_GUIDE.md for detailed usage →](WASM_GUIDE.md)
 
 - Maps to and from JSON
 - Schema less, fully described, like JSON (can be used in documents)
@@ -43,6 +55,60 @@ The table below shows binary message size versus BEVE. A positive value means th
 
 JSON is ubiquitous because it is tagged (has keys), and therefore messages can be sent in part. Furthermore, extending specifications and adding more fields is far easier with tagged messages and unordered mapping. Tags also make the format more human friendly. However, tags are entirely optional, and structs can be serialized as generic arrays.
 
+## 🚀 Quick Start (JavaScript/TypeScript)
+
+### Installation
+
+```bash
+npm install beve
+# or
+yarn add beve
+# or
+bun add beve
+```
+
+### Basic Usage
+
+```typescript
+import { marshal, unmarshal } from 'beve';
+
+// Encode data (automatically uses WASM if available)
+const data = { id: 123, name: "Alice", scores: [95, 87, 92] };
+const bytes = await marshal(data);
+
+// Decode data
+const decoded = await unmarshal(bytes);
+console.log(decoded); // { id: 123, name: "Alice", scores: [95, 87, 92] }
+```
+
+### Synchronous API
+
+```typescript
+import { marshalSync, unmarshalSync } from 'beve';
+
+const bytes = marshalSync(data);  // Uses WASM once loaded, falls back to TypeScript otherwise
+const decoded = unmarshalSync(bytes);
+
+```
+
+### Global API (JSON-style convenience)
+
+When the package is imported it automatically injects a `beve` helper on `globalThis`, mirroring the ergonomics of `JSON.stringify` / `JSON.parse`:
+
+```typescript
+const payload = beve.encode({ id: 42 });
+const value = beve.decode(payload);
+
+// Async helpers are also available
+await beve.init();          // ensures WASM is ready (no-op if already loaded)
+const fast = await beve.encodeAsync({ id: 42 });
+```
+
+The helper automatically prefers the WASM pipeline whenever the platform supports it, and gracefully falls back to the TypeScript implementation otherwise.
+```
+
+**👉 For detailed WASM usage, see [WASM_GUIDE.md](WASM_GUIDE.md)**
+
 ## Endianness
 
 The endianness must be `little endian`.
@@ -52,6 +118,20 @@ The endianness must be `little endian`.
 The standard extension for BEVE files is `.beve`
 
 ## Implementations
+
+### JavaScript/TypeScript
+
+- **[beve-js](https://github.com/beve-org/beve-js)** - High-performance implementation with WebAssembly acceleration
+  - 🚀 WASM + TypeScript hybrid
+  - 📦 Works in Node.js, Browser, and edge runtimes
+  - ⚡ 1.5x faster with WASM acceleration
+
+### Go
+
+- **[beve-go](https://github.com/beve-org/beve-go)** - Highly optimized Go implementation
+  - 5.6× faster than CBOR
+  - 64% smaller payloads than JSON
+  - WASM compilation support
 
 ### C++
 
@@ -69,7 +149,6 @@ The standard extension for BEVE files is `.beve`
 ### Rust
 
 - [beve crate](https://crates.io/crates/beve) (developed by author)
-
 - [serde-beve crate](https://crates.io/crates/serde-beve)
 
 ## Right Most Bit Ordering
