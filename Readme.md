@@ -70,24 +70,24 @@ bun add beve
 ### Basic Usage
 
 ```typescript
-import { marshal, unmarshal } from 'beve';
+import { encode, decode } from 'beve';
 
 // Encode data (automatically uses WASM if available)
 const data = { id: 123, name: "Alice", scores: [95, 87, 92] };
-const bytes = await marshal(data);
+const bytes = await encode(data);
 
 // Decode data
-const decoded = await unmarshal(bytes);
+const decoded = await decode(bytes);
 console.log(decoded); // { id: 123, name: "Alice", scores: [95, 87, 92] }
 ```
 
 ### Synchronous API
 
 ```typescript
-import { marshalSync, unmarshalSync } from 'beve';
+import { encodeSync, decodeSync } from 'beve';
 
-const bytes = marshalSync(data);  // Uses WASM once loaded, falls back to TypeScript otherwise
-const decoded = unmarshalSync(bytes);
+const bytes = encodeSync(data);  // Uses TypeScript implementation; WASM prepares in background for async calls
+const decoded = decodeSync(bytes);
 
 ```
 
@@ -105,6 +105,8 @@ const fast = await beve.encodeAsync({ id: 42 });
 ```
 
 The helper automatically prefers the WASM pipeline whenever the platform supports it, and gracefully falls back to the TypeScript implementation otherwise.
+
+> ℹ️ **Tip for custom bundlers:** If your build pipeline serves the BEVE assets from a non-default location, set `globalThis.__BEVE_BASE_URL__` (for example `new URL('./node_modules/beve/wasm/', document.baseURI).toString()`) before calling any BEVE APIs so the loader can resolve `beve.wasm` and `wasm_exec.js` correctly.
 ```
 
 **👉 For detailed WASM usage, see [WASM_GUIDE.md](WASM_GUIDE.md)**

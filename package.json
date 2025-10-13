@@ -1,6 +1,6 @@
 {
   "name": "beve",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "description": "High performance binary serialization with WebAssembly acceleration - Binary Efficient Versatile Encoding for JavaScript/TypeScript",
   "main": "dist/cjs/index.js",
   "module": "dist/index.js",
@@ -11,7 +11,8 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/cjs/index.js"
-    }
+    },
+    "./wasm/*": "./wasm/*"
   },
   "bin": {
     "beve-benchmark": "./dist/benchmark.js"

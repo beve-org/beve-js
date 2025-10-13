@@ -39,6 +39,7 @@ const hasWasmSupport = typeof globalThis.WebAssembly !== 'undefined' &&
 let wasmModule: BeveWasmModule | null = null;
 let wasmLoadAttempted = false;
 let wasmLoadError: Error | null = null;
+let wasmExecLoadedPromise: Promise<void> | null = null;
 
 /**
  * Get current file directory
@@ -118,17 +119,22 @@ async function loadWasmBrowser(): Promise<BeveWasmModule> {
   }
 
   try {
-    // Load wasm_exec.js dynamically
-    await loadScript('/wasm/wasm_exec.js');
+    const wasmExecUrl = resolveBrowserAssetUrl('wasm_exec.js');
+    await ensureGoRuntime(wasmExecUrl);
 
-    // @ts-ignore
+    // @ts-ignore - Go provided by wasm_exec runtime
     const go = new Go();
 
-    // Use fetch + instantiateStreaming for better performance
-    const wasmResponse = await fetch('/wasm/beve.wasm');
-    const wasmInstance = await globalThis.WebAssembly.instantiateStreaming(wasmResponse, go.importObject);
+    const wasmUrl = resolveBrowserAssetUrl('beve.wasm');
+    const wasmResponse = await fetch(wasmUrl);
+    if (!wasmResponse.ok) {
+      throw new Error(`Failed to fetch WASM binary: ${wasmResponse.status} ${wasmResponse.statusText}`);
+    }
 
-    // Run Go runtime
+    const wasmBuffer = await wasmResponse.arrayBuffer();
+    const wasmInstance = await globalThis.WebAssembly.instantiate(wasmBuffer, go.importObject);
+
+    // Run Go runtime (async, doesn't block)
     go.run(wasmInstance.instance);
 
     // Wait for beveWasm global
@@ -157,6 +163,79 @@ function loadScript(src: string): Promise<void> {
     script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
     globalThis.document.head.appendChild(script);
   });
+}
+
+function resolveBrowserAssetUrl(filename: string): string {
+  if (isBrowser) {
+    const doc = globalThis.document as { currentScript?: { src?: string } | null; getElementsByTagName?: (tag: string) => ArrayLike<{ src?: string }> } | undefined;
+
+    const hintedBase = (globalThis as { __BEVE_BASE_URL__?: string }).__BEVE_BASE_URL__;
+    if (hintedBase) {
+      return normalizeBaseUrl(hintedBase) + filename;
+    }
+
+    const currentScript = doc?.currentScript;
+    if (currentScript?.src) {
+      return new URL(`./wasm/${filename}`, currentScript.src).toString();
+    }
+
+    const scripts = doc?.getElementsByTagName?.('script');
+    if (scripts && scripts.length > 0) {
+      for (let i = scripts.length - 1; i >= 0; i -= 1) {
+        const scriptSrc = scripts[i]?.src;
+        if (scriptSrc) {
+          if (scriptSrc.includes('/beve')) {
+            return new URL(`./wasm/${filename}`, scriptSrc).toString();
+          }
+          if (i === scripts.length - 1) {
+            return new URL(`./wasm/${filename}`, scriptSrc).toString();
+          }
+        }
+      }
+    }
+  }
+
+  return `/wasm/${filename}`;
+}
+
+function normalizeBaseUrl(base: string): string {
+  if (!base) {
+    return '';
+  }
+  return base.endsWith('/') ? base : `${base}/`;
+}
+
+async function ensureGoRuntime(wasmExecUrl: string): Promise<void> {
+  if (typeof globalThis.Go === 'function') {
+    return;
+  }
+
+  if (!wasmExecLoadedPromise) {
+    wasmExecLoadedPromise = (async () => {
+      try {
+        if (typeof fetch === 'function') {
+          const response = await fetch(wasmExecUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch wasm_exec.js: ${response.status} ${response.statusText}`);
+          }
+          const source = await response.text();
+          const loader = new Function('globalThis', `${source}\nreturn globalThis.Go;`);
+          loader(globalThis);
+        } else {
+          await loadScript(wasmExecUrl);
+        }
+
+        if (typeof globalThis.Go !== 'function') {
+          throw new Error('Go runtime did not initialize');
+        }
+      } catch (error) {
+        wasmExecLoadedPromise = null;
+        throw error;
+      }
+    })();
+  }
+
+  await wasmExecLoadedPromise;
 }
 
 /**

@@ -25,6 +25,10 @@
 
 // Primary API - adaptive (WASM + TypeScript fallback)
 import {
+  encode,
+  decode,
+  encodeSync,
+  decodeSync,
   marshal,
   unmarshal,
   marshalSync,
@@ -32,9 +36,14 @@ import {
   initWasm,
   getImplementationInfo,
   disableWasm,
+  beveAPI,
 } from './adaptive';
 
 export {
+  encode,
+  decode,
+  encodeSync,
+  decodeSync,
   marshal,
   unmarshal,
   marshalSync,
@@ -42,7 +51,10 @@ export {
   initWasm,
   getImplementationInfo,
   disableWasm,
+  beveAPI,
 };
+
+export default beveAPI;
 
 // Direct TypeScript API (for advanced usage)
 export { readBeve } from './decoder';
@@ -64,10 +76,10 @@ type GlobalBeveApi = {
 };
 
 const beveGlobal: GlobalBeveApi = {
-  encode: (value: any) => marshalSync(value),
-  decode: (bytes: Uint8Array) => unmarshalSync(bytes),
-  encodeAsync: (value: any) => marshal(value),
-  decodeAsync: (bytes: Uint8Array) => unmarshal(bytes),
+  encode: (value: any) => encodeSync(value),
+  decode: (bytes: Uint8Array) => decodeSync(bytes),
+  encodeAsync: (value: any) => encode(value),
+  decodeAsync: (bytes: Uint8Array) => decode(bytes),
   init: () => initWasm(),
   info: () => getImplementationInfo(),
   disable: () => disableWasm(),

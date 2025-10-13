@@ -161,6 +161,11 @@ export function unmarshalSync(bytes: Uint8Array): any {
   return readBeve(bytes);
 }
 
+export const encode = marshal;
+export const decode = unmarshal;
+export const encodeSync = marshalSync;
+export const decodeSync = unmarshalSync;
+
 /**
  * Get implementation info
  * Useful for debugging and logging
@@ -192,6 +197,16 @@ export function disableWasm() {
   resetWasmModule();
   console.warn('[BEVE] WASM disabled, using TypeScript implementation');
 }
+
+export const beveAPI = Object.freeze({
+  encode,
+  decode,
+  encodeSync,
+  decodeSync,
+  init: initWasm,
+  disable: disableWasm,
+  info: getImplementationInfo,
+});
 
 // Eagerly attempt to initialize WASM so it becomes the default when supported
 void initWasm();
