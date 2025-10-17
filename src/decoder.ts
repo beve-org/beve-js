@@ -246,10 +246,147 @@ export function readBeve(buffer: Uint8Array): any {
                     cursor.value += size;
                     return data;
                 }
+            case 6: // extension
+                {
+                    // Parse extension ID from header
+                    const extId = (header & 0b11111000) >> 3;
+                    return read_extension(extId, buffer, cursor);
+                }
             default:
                 throw new Error(`Unknown type: ${type}`);
         }
     }
 
     return read_value();
+}
+
+// Export read_value for extension use
+export function read_value_internal(buffer: Uint8Array, cursor: { value: number }): any {
+    if (cursor.value >= buffer.length) {
+        throw new Error(`Buffer overflow: cursor at ${cursor.value}, buffer length ${buffer.length}`);
+    }
+
+    const header = buffer[cursor.value++];
+    const type = header & 0b00000111;
+
+    switch (type) {
+        case 0: // null or boolean
+            {
+                const is_bool = (header & 0b00001000) >> 3;
+                if (is_bool) {
+                    return Boolean((header & 0b11110000) >> 4);
+                } else {
+                    return null;
+                }
+            }
+        case 1: // number
+            {
+                const num_type = (header & 0b00011000) >> 3;
+                const is_float = num_type === 0;
+                const is_signed = num_type === 1;
+                const byte_count_index = (header & 0b11100000) >> 5;
+                const byte_count = config[byte_count_index];
+
+                if (is_float) {
+                    switch (byte_count) {
+                        case 4:
+                            return readFloat(buffer, cursor);
+                        case 8:
+                            return readDouble(buffer, cursor);
+                    }
+                } else {
+                    if (is_signed) {
+                        switch (byte_count) {
+                            case 1:
+                                return readInt8(buffer, cursor);
+                            case 2:
+                                return readInt16(buffer, cursor);
+                            case 4:
+                                return readInt32(buffer, cursor);
+                            case 8:
+                                return readBigInt64(buffer, cursor);
+                        }
+                    } else {
+                        switch (byte_count) {
+                            case 1:
+                                return readUInt8(buffer, cursor);
+                            case 2:
+                                return readUInt16(buffer, cursor);
+                            case 4:
+                                return readUInt32(buffer, cursor);
+                            case 8:
+                                return readBigUInt64(buffer, cursor);
+                        }
+                    }
+                }
+                break;
+            }
+        case 2: // string
+            {
+                const size = read_compressed(buffer, cursor);
+                if (cursor.value + size > buffer.length) {
+                    throw new Error(`Buffer overflow: string size ${size} at cursor ${cursor.value}, buffer length ${buffer.length}`);
+                }
+                const str = new TextDecoder().decode(buffer.subarray(cursor.value, cursor.value + size));
+                cursor.value += size;
+                return str;
+            }
+        // ... Add other cases similar to read_value above
+        default:
+            throw new Error(`Unknown type in read_value_internal: ${type}`);
+    }
+}
+
+// ============================================================================
+// Extension Support
+// ============================================================================
+
+import {
+    ExtensionID,
+    detectExtension,
+    decodeTypedObjectArray,
+    decodeTimestamp,
+    decodeDuration,
+    decodeUUID,
+} from './extensions';
+
+/**
+ * Read extension data based on extension ID
+ */
+function read_extension(extId: number, buffer: Uint8Array, cursor: { value: number }): any {
+    switch (extId) {
+        case ExtensionID.TYPED_ARRAY:
+            return decodeTypedObjectArray(buffer, cursor);
+        
+        case ExtensionID.TIMESTAMP:
+            return decodeTimestamp(buffer, cursor);
+        
+        case ExtensionID.DURATION:
+            return decodeDuration(buffer, cursor);
+        
+        case ExtensionID.UUID:
+            return decodeUUID(buffer, cursor);
+        
+        default:
+            throw new Error(`Unsupported extension ID: ${extId}`);
+    }
+}
+
+/**
+ * Decode with automatic extension detection
+ * 
+ * @param buffer - BEVE binary data
+ * @returns Decoded data
+ */
+export function decodeAuto(buffer: Uint8Array): any {
+    const detection = detectExtension(buffer);
+    
+    if (detection.hasExtension) {
+        // Extension-encoded data
+        const cursor = { value: 1 }; // Skip header
+        return read_extension(detection.extId!, buffer, cursor);
+    } else {
+        // Standard BEVE
+        return readBeve(buffer);
+    }
 }

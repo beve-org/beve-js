@@ -7,14 +7,11 @@
  * Shows automatic fallback and performance characteristics
  */
 
-import {
-  marshal,
-  unmarshal,
-  marshalSync,
-  unmarshalSync,
-  initWasm,
-  getImplementationInfo,
-} from './adaptive';
+import { performance } from 'node:perf_hooks';
+import { initWasm, getImplementationInfo } from './adaptive';
+import { writeBeve } from './encoder';
+import { readBeve } from './decoder';
+import { getWasmModule, type BeveWasmModule } from './wasm-loader';
 
 interface BenchmarkResult {
   name: string;
@@ -23,6 +20,12 @@ interface BenchmarkResult {
   maxTime: number;
   opsPerSec: number;
   totalTime: number;
+}
+
+interface BenchmarkOutcome {
+  name: string;
+  result: BenchmarkResult | null;
+  error?: string;
 }
 
 function formatNumber(num: number): string {
@@ -60,49 +63,6 @@ function benchmark(
   for (let i = 0; i < iterations; i++) {
     const start = performance.now();
     fn();
-    const end = performance.now();
-    times.push(end - start);
-  }
-
-  const endTotal = performance.now();
-  const totalTime = endTotal - startTotal;
-
-  const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
-  const opsPerSec = (iterations / totalTime) * 1000;
-
-  return {
-    name,
-    avgTime,
-    minTime,
-    maxTime,
-    opsPerSec,
-    totalTime,
-  };
-}
-
-/**
- * Async benchmark wrapper
- */
-async function benchmarkAsync(
-  name: string,
-  fn: () => Promise<void>,
-  iterations: number = 1000,
-  warmupIterations: number = 100
-): Promise<BenchmarkResult> {
-  // Warmup
-  for (let i = 0; i < warmupIterations; i++) {
-    await fn();
-  }
-
-  // Measure
-  const times: number[] = [];
-  const startTotal = performance.now();
-
-  for (let i = 0; i < iterations; i++) {
-    const start = performance.now();
-    await fn();
     const end = performance.now();
     times.push(end - start);
   }
@@ -194,6 +154,55 @@ function printResult(result: BenchmarkResult) {
   console.log(`      Total:      ${formatNumber(result.totalTime)} ms`);
 }
 
+function printFailure(name: string, error?: string) {
+  console.log(`   ${name}:`);
+  console.log(`      ⚠️  ${error ?? 'Benchmark failed'}`);
+}
+
+function printOutcome(outcome: BenchmarkOutcome) {
+  if (outcome.result) {
+    printResult(outcome.result);
+  } else {
+    printFailure(outcome.name, outcome.error);
+  }
+}
+
+function runBenchmarkSafe(
+  name: string,
+  fn: () => any,
+  iterations: number = 1000,
+  warmupIterations: number = 100
+): BenchmarkOutcome {
+  try {
+    const result = benchmark(name, fn, iterations, warmupIterations);
+    return { name, result };
+  } catch (error) {
+    return { name, result: null, error: (error as Error).message };
+  }
+}
+
+function formatOutcomeValue(outcome: BenchmarkOutcome | null | undefined): string {
+  if (!outcome) {
+    return 'n/a';
+  }
+  if (outcome.result) {
+    return formatNumber(outcome.result.avgTime);
+  }
+  return `⚠️ ${outcome.error ?? 'n/a'}`;
+}
+
+function formatRatio(
+  base: BenchmarkOutcome | null | undefined,
+  candidate: BenchmarkOutcome | null | undefined
+): string {
+  if (!base?.result || !candidate?.result) {
+    return 'n/a';
+  }
+
+  const ratio = base.result.avgTime / candidate.result.avgTime;
+  return `${ratio.toFixed(2)}x`;
+}
+
 /**
  * Compare two benchmark results
  */
@@ -228,10 +237,25 @@ async function runWasmBenchmark() {
   if (info.error) {
     console.log(`   Error:          ${info.error}`);
   }
-  
+
+  const wasmModule: BeveWasmModule | null = await getWasmModule();
+
   console.log('\n' + '═'.repeat(70) + '\n');
 
   const testSizes: Array<'small' | 'medium' | 'large'> = ['small', 'medium', 'large'];
+  const summaryRows: Array<{
+    Dataset: string;
+    'BEVE TS Encode (ms/op)': string;
+    'BEVE WASM Encode (ms/op)': string;
+    'JSON Encode (ms/op)': string;
+    'BEVE TS Decode (ms/op)': string;
+    'BEVE WASM Decode (ms/op)': string;
+    'JSON Decode (ms/op)': string;
+    'TS→WASM Encode Ratio': string;
+    'TS→JSON Encode Ratio': string;
+    'TS→WASM Decode Ratio': string;
+    'TS→JSON Decode Ratio': string;
+  }> = [];
   const iterations = 1000;
 
   for (const size of testSizes) {
@@ -241,60 +265,152 @@ async function runWasmBenchmark() {
     console.log(`📊 Testing ${size.toUpperCase()} dataset (${dataSize.toLocaleString()} bytes JSON):`);
     console.log('─'.repeat(70));
 
-    // TypeScript Marshal (Sync)
-    const tsEncodeResult = benchmark(
-      'TypeScript Marshal (Sync)',
-      () => marshalSync(testData),
+    // TypeScript encode benchmark
+    const tsEncodeOutcome = runBenchmarkSafe(
+      'TypeScript Encode (TS)',
+      () => writeBeve(testData),
       iterations
     );
-    printResult(tsEncodeResult);
+    printOutcome(tsEncodeOutcome);
     console.log();
 
-    // Adaptive Marshal (may use WASM)
-    const adaptiveEncodeResult = await benchmarkAsync(
-      'Adaptive Marshal (WASM/TS)',
-      async () => { await marshal(testData); },
+    const tsSample = writeBeve(testData);
+
+    // TypeScript decode benchmark
+    const tsDecodeOutcome = runBenchmarkSafe(
+      'TypeScript Decode (TS)',
+      () => readBeve(tsSample),
       iterations
     );
-    printResult(adaptiveEncodeResult);
+    printOutcome(tsDecodeOutcome);
     console.log();
 
-    // Compare encoding
+    const jsonSample = JSON.stringify(testData);
+
+    const jsonEncodeOutcome = runBenchmarkSafe(
+      'JSON Encode (JSON.stringify)',
+      () => JSON.stringify(testData),
+      iterations
+    );
+    printOutcome(jsonEncodeOutcome);
+    console.log();
+
+    const jsonDecodeOutcome = runBenchmarkSafe(
+      'JSON Decode (JSON.parse)',
+      () => JSON.parse(jsonSample),
+      iterations
+    );
+    printOutcome(jsonDecodeOutcome);
+    console.log();
+
+    let wasmEncodeOutcome: BenchmarkOutcome | null = null;
+    let wasmDecodeOutcome: BenchmarkOutcome | null = null;
+    let wasmEncodeError: string | undefined;
+    let wasmDecodeError: string | undefined;
+
+    if (wasmModule) {
+      let wasmEncodedSample: Uint8Array | null = null;
+
+      const encodeOutcome = runBenchmarkSafe(
+        'WASM Encode',
+        () => {
+          const result = wasmModule.marshal(testData);
+          if (result.error) {
+            throw new Error(result.error);
+          }
+          if (!result.data) {
+            throw new Error('WASM marshal returned no data');
+          }
+          wasmEncodedSample = result.data;
+          return result.data;
+        },
+        iterations
+      );
+      wasmEncodeOutcome = encodeOutcome;
+      printOutcome(encodeOutcome);
+      console.log();
+
+      if (encodeOutcome.result && wasmEncodedSample) {
+        const sample = wasmEncodedSample;
+        const decodeOutcome = runBenchmarkSafe(
+          'WASM Decode',
+          () => {
+            const result = wasmModule.unmarshal(sample);
+            if (result.error) {
+              throw new Error(result.error);
+            }
+            return result.data;
+          },
+          iterations
+        );
+        wasmDecodeOutcome = decodeOutcome;
+        printOutcome(decodeOutcome);
+        console.log();
+      } else {
+        wasmDecodeError = encodeOutcome.error ?? 'WASM encode failed';
+        printFailure('WASM Decode', wasmDecodeError);
+        console.log();
+      }
+    } else {
+      wasmEncodeError = 'WASM module not available';
+      wasmDecodeError = 'WASM module not available';
+      printFailure('WASM Encode', wasmEncodeError);
+      console.log();
+      printFailure('WASM Decode', wasmDecodeError);
+      console.log();
+    }
+
     console.log('🔬 Encoding Comparison:');
-    compareResults(tsEncodeResult, adaptiveEncodeResult);
+    if (tsEncodeOutcome.result && wasmEncodeOutcome?.result) {
+      compareResults(tsEncodeOutcome.result, wasmEncodeOutcome.result);
+    } else if (wasmEncodeOutcome?.error || wasmEncodeError) {
+      console.log(`   ⚠️  ${wasmEncodeOutcome?.error ?? wasmEncodeError}`);
+    }
+    if (tsEncodeOutcome.result && jsonEncodeOutcome.result) {
+      compareResults(tsEncodeOutcome.result, jsonEncodeOutcome.result);
+    } else if (jsonEncodeOutcome.error) {
+      console.log(`   ⚠️  ${jsonEncodeOutcome.error}`);
+    }
     console.log();
 
-    // Pre-encode for decode tests
-    const tsEncoded = marshalSync(testData);
-    const adaptiveEncoded = await marshal(testData);
-
-    // TypeScript Unmarshal (Sync)
-    const tsDecodeResult = benchmark(
-      'TypeScript Unmarshal (Sync)',
-      () => unmarshalSync(tsEncoded),
-      iterations
-    );
-    printResult(tsDecodeResult);
-    console.log();
-
-    // Adaptive Unmarshal (may use WASM)
-    const adaptiveDecodeResult = await benchmarkAsync(
-      'Adaptive Unmarshal (WASM/TS)',
-      async () => { await unmarshal(adaptiveEncoded); },
-      iterations
-    );
-    printResult(adaptiveDecodeResult);
-    console.log();
-
-    // Compare decoding
     console.log('🔬 Decoding Comparison:');
-    compareResults(tsDecodeResult, adaptiveDecodeResult);
+    if (tsDecodeOutcome.result && wasmDecodeOutcome?.result) {
+      compareResults(tsDecodeOutcome.result, wasmDecodeOutcome.result);
+    } else if (wasmDecodeOutcome?.error || wasmDecodeError) {
+      console.log(`   ⚠️  ${wasmDecodeOutcome?.error ?? wasmDecodeError}`);
+    }
+    if (tsDecodeOutcome.result && jsonDecodeOutcome.result) {
+      compareResults(tsDecodeOutcome.result, jsonDecodeOutcome.result);
+    } else if (jsonDecodeOutcome.error) {
+      console.log(`   ⚠️  ${jsonDecodeOutcome.error}`);
+    }
     console.log();
+
+    const summaryRow = {
+      Dataset: size.toUpperCase(),
+      'BEVE TS Encode (ms/op)': formatOutcomeValue(tsEncodeOutcome),
+      'BEVE WASM Encode (ms/op)': formatOutcomeValue(wasmEncodeOutcome),
+      'JSON Encode (ms/op)': formatOutcomeValue(jsonEncodeOutcome),
+      'BEVE TS Decode (ms/op)': formatOutcomeValue(tsDecodeOutcome),
+      'BEVE WASM Decode (ms/op)': formatOutcomeValue(wasmDecodeOutcome),
+      'JSON Decode (ms/op)': formatOutcomeValue(jsonDecodeOutcome),
+      'TS→WASM Encode Ratio': formatRatio(tsEncodeOutcome, wasmEncodeOutcome),
+      'TS→JSON Encode Ratio': formatRatio(tsEncodeOutcome, jsonEncodeOutcome),
+      'TS→WASM Decode Ratio': formatRatio(tsDecodeOutcome, wasmDecodeOutcome),
+      'TS→JSON Decode Ratio': formatRatio(tsDecodeOutcome, jsonDecodeOutcome),
+    };
+
+    summaryRows.push(summaryRow);
 
     console.log('═'.repeat(70) + '\n');
   }
 
   console.log('✅ WASM Benchmark completed!\n');
+
+  if (summaryRows.length) {
+    console.log('📈 Summary (lower is better):');
+    console.table(summaryRows);
+  }
 
   if (wasmLoaded) {
     console.log('💡 WASM is active and being used for encode/decode operations.');

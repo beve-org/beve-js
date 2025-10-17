@@ -41,24 +41,59 @@ let wasmLoadAttempted = false;
 let wasmLoadError: Error | null = null;
 let wasmExecLoadedPromise: Promise<void> | null = null;
 
+function getImportMetaUrlSafe(): string | null {
+  try {
+    const meta = (0, eval)('import.meta.url');
+    return typeof meta === 'string' ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get current file directory
  * Works differently in ESM vs CJS, use environment detection
  */
 function getCurrentDir(): string {
-  // In Node.js CJS, __dirname is available
-  try {
-    // @ts-ignore
-    if (typeof __dirname !== 'undefined') {
-      // @ts-ignore
-      return __dirname;
+  // Prefer CommonJS __dirname when available
+  if (typeof __dirname !== 'undefined') {
+    // @ts-ignore - __dirname exists in CJS builds
+    return __dirname;
+  }
+
+  // In ESM builds, derive directory from import.meta.url
+  const importMetaUrl = getImportMetaUrlSafe();
+  if (importMetaUrl) {
+    try {
+      const metaUrl = new URL(importMetaUrl);
+      if (metaUrl.protocol === 'file:') {
+        const decoded = decodeURIComponent(metaUrl.pathname);
+        const normalized = decoded.replace(/^\/+([A-Za-z]:)/, '$1');
+        return path.dirname(normalized);
+      }
+      return path.dirname(metaUrl.pathname);
+    } catch {
+      /* noop */
     }
-  } catch {}
-  
-  // In Node.js ESM, we need import.meta.url
-  // This will be handled at bundle time by the module system
-  // For CommonJS builds, we return a safe fallback
-  return __dirname || process.cwd();
+  }
+
+  // Fallback to process.cwd() as a last resort
+  return typeof process !== 'undefined' && typeof process.cwd === 'function'
+    ? process.cwd()
+    : '.';
+}
+
+function resolveExistingPath(candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // Ignore filesystem errors and continue to next candidate
+    }
+  }
+  return null;
 }
 
 /**
@@ -72,17 +107,36 @@ async function loadWasmNode(): Promise<BeveWasmModule> {
   try {
     // Resolve WASM file path
     const dirname = getCurrentDir();
-    const wasmPath = path.join(dirname, '../wasm/beve.wasm');
+    const rootCandidates = Array.from(
+      new Set(
+        [
+          dirname,
+          path.resolve(dirname, '..'),
+          typeof process !== 'undefined' && typeof process.cwd === 'function' ? process.cwd() : undefined,
+        ].filter((root): root is string => typeof root === 'string')
+      )
+    );
 
-    // Check if file exists
-    if (!fs.existsSync(wasmPath)) {
-      throw new Error(`WASM file not found: ${wasmPath}`);
+    const wasmPathCandidates = rootCandidates.map((root) => path.join(root, 'wasm/beve.wasm'));
+    const wasmPath = resolveExistingPath(wasmPathCandidates);
+
+    if (!wasmPath) {
+      throw new Error(
+        `WASM file not found. Tried:\n${wasmPathCandidates.join('\n')}`
+      );
     }
 
-    // Load wasm_exec.js (Go glue code)
-    const wasmExecPath = path.join(dirname, '../wasm/wasm_exec.js');
-    if (!fs.existsSync(wasmExecPath)) {
-      throw new Error(`wasm_exec.js not found: ${wasmExecPath}`);
+    const wasmDir = path.dirname(wasmPath);
+    const wasmExecCandidates = [
+      path.join(wasmDir, 'wasm_exec.js'),
+      ...rootCandidates.map((root) => path.join(root, 'wasm/wasm_exec.js')),
+    ];
+    const wasmExecPath = resolveExistingPath(wasmExecCandidates);
+
+    if (!wasmExecPath) {
+      throw new Error(
+        `wasm_exec.js not found. Tried:\n${wasmExecCandidates.join('\n')}`
+      );
     }
 
     // Dynamic import wasm_exec.js (it sets up global Go class)

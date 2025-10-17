@@ -57,10 +57,13 @@ export {
 export default beveAPI;
 
 // Direct TypeScript API (for advanced usage)
-export { readBeve } from './decoder';
-export { writeBeve } from './encoder';
+export { readBeve, decodeAuto, read_value_internal } from './decoder';
+export { writeBeve, encodeAuto, encodeTyped, write_value_internal } from './encoder';
 export { Writer } from './writer';
 export * from './utils';
+
+// Extension API
+export * from './extensions';
 
 // Re-export types
 export type { BeveWasmModule } from './wasm-loader';

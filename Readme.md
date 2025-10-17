@@ -107,8 +107,200 @@ const fast = await beve.encodeAsync({ id: 42 });
 The helper automatically prefers the WASM pipeline whenever the platform supports it, and gracefully falls back to the TypeScript implementation otherwise.
 
 > ℹ️ **Tip for custom bundlers:** If your build pipeline serves the BEVE assets from a non-default location, set `globalThis.__BEVE_BASE_URL__` (for example `new URL('./node_modules/beve/wasm/', document.baseURI).toString()`) before calling any BEVE APIs so the loader can resolve `beve.wasm` and `wasm_exec.js` correctly.
+
+---
+
+## 🎯 BEVE Extensions (NEW!)
+
+BEVE v1.3+ introduces **extensions** for specialized data types and optimizations while maintaining backward compatibility.
+
+### Extension 1: Typed Object Arrays
+
+**48% size reduction** for arrays of objects with the same schema.
+
+```typescript
+import { encodeTyped, decodeAuto } from 'beve';
+
+const users = [
+  { name: "Alice", age: 30 },
+  { name: "Bob", age: 25 },
+  { name: "Charlie", age: 35 }
+];
+
+// Standard: 112 bytes (field names repeated 3×)
+// Typed:    58 bytes (field names stored once!)
+const bytes = encodeTyped(users);
+const decoded = decodeAuto(bytes);
+
+// Automatic format selection (uses typed if N ≥ 5)
+const autoBytes = encodeAuto(users, { autoDetect: true });
 ```
 
+**When to use:**
+- Array length ≥ 5 objects
+- All objects have the same keys
+- Size-critical applications (mobile, IoT)
+
+---
+
+### Extension 4: Timestamps
+
+**Nanosecond precision** with optional timezone support (14-16 bytes vs 24+ bytes for ISO 8601).
+
+```typescript
+import { 
+  encodeTimestamp, 
+  decodeTimestamp, 
+  getCurrentTimestamp,
+  Writer 
+} from 'beve';
+
+// From current time
+const ts = getCurrentTimestamp();
+// { seconds: 1697550000, nanoseconds: 123456789, timezoneOffset: null }
+
+// Encode timestamp
+const writer = new Writer();
+encodeTimestamp(ts, writer);
+const bytes = writer.buffer.slice(0, writer.offset);
+
+// Decode
+const cursor = { value: 1 }; // Skip header
+const decoded = decodeTimestamp(bytes, cursor);
+
+// From JavaScript Date
+import { dateToTimestamp, timestampToDate } from 'beve';
+const ts = dateToTimestamp(new Date());
+const date = timestampToDate(ts);
+```
+
+**Benefits:**
+- ✅ Nanosecond precision (vs millisecond in JSON)
+- ✅ Timezone-aware
+- ✅ 40% smaller than ISO 8601 string
+
+---
+
+### Extension 5: Duration
+
+**High-precision time intervals** (14 bytes).
+
+```typescript
+import { encodeDuration, decodeDuration, Writer } from 'beve';
+
+const duration = { 
+  seconds: 3600,          // 1 hour
+  nanoseconds: 500_000_000 // 0.5 seconds
+};
+
+const writer = new Writer();
+encodeDuration(duration, writer);
+const bytes = writer.buffer.slice(0, writer.offset);
+
+// Decode
+const cursor = { value: 1 };
+const decoded = decodeDuration(bytes, cursor);
+```
+
+---
+
+### Extension 8: UUID
+
+**50% smaller** than string representation (18 bytes vs 38 bytes).
+
+```typescript
+import { 
+  generateUUIDv4, 
+  encodeUUID, 
+  decodeUUID,
+  formatUUID,
+  parseUUID,
+  Writer 
+} from 'beve';
+
+// Generate UUID
+const uuid = generateUUIDv4();
+// { version: 4, bytes: Uint8Array(16) }
+
+// Encode binary UUID
+const writer = new Writer();
+encodeUUID(uuid, writer);
+const bytes = writer.buffer.slice(0, writer.offset);
+
+// From string
+import { encodeUUIDString } from 'beve';
+encodeUUIDString("550e8400-e29b-41d4-a716-446655440000", writer);
+
+// Decode to string
+const cursor = { value: 1 };
+const decoded = decodeUUID(bytes, cursor);
+const uuidString = formatUUID(decoded.bytes);
+// "550e8400-e29b-41d4-a716-446655440000"
+```
+
+**Use cases:**
+- Database primary keys
+- Distributed system identifiers
+- Session tokens
+
+---
+
+### Extension API Summary
+
+| Extension | Feature | Size Savings | Use Case |
+|-----------|---------|--------------|----------|
+| **Ext 1** | Typed Object Arrays | **48%** | Arrays of structs |
+| **Ext 4** | Timestamps | **40%** | Date/time with timezone |
+| **Ext 5** | Duration | **30%** | Time intervals |
+| **Ext 8** | UUID | **50%** | Binary UUIDs |
+
+**Example:**
+```typescript
+import { encodeAuto, decodeAuto } from 'beve';
+
+// Automatic format selection
+const data = [
+  { id: "550e8400-e29b-41d4-a716-446655440000", timestamp: new Date() },
+  { id: "6ba7b810-9dad-11d1-80b4-00c04fd430c8", timestamp: new Date() }
+];
+
+// Auto-detects: uses Typed Array (Ext 1) if N ≥ 5
+const bytes = encodeAuto(data, { autoDetect: true, minArraySize: 2 });
+
+// Decode with automatic extension detection
+const decoded = decodeAuto(bytes);
+```
+
+**Run the demo:**
+```bash
+npm install
+npm run build
+node examples/extensions-demo.ts
+```
+
+---
+
+
+## 🧪 WASM vs TypeScript Benchmark
+
+Run the curated benchmark to measure the raw Go/WASM module against the TypeScript implementation:
+
+```bash
+npm install
+npm run benchmark:wasm
+```
+
+The script executes three fixture sizes, captures encode/decode latency (ms/op), and prints a summary table showing the relative speedup. It calls the WASM module directly—no fallbacks—so you can spot regressions quickly.
+
+### Sample results (Node.js v24.4.1 · macOS)
+
+| Dataset | TS Encode (ms/op) | WASM Encode (ms/op) | WASM vs TS | TS Decode (ms/op) | WASM Decode (ms/op) | Notes |
+| ------- | ----------------- | ------------------- | ---------- | ----------------- | ------------------- | ----- |
+| small   | 0.0065            | 0.0356              | 0.18×      | 0.0034            | 0.0164              | WASM currently slower in Node due to Go runtime bridge overhead. |
+| medium  | 0.0907            | 0.5520              | 0.16×      | 0.0408            | 0.1845              | Same trend for mid-size payloads. |
+| large   | 4.1348            | ⚠️ unreachable       | n/a        | 2.2669            | ⚠️ unreachable       | Current WASM decoder traps on very large payloads; results fall back to TypeScript. |
+
+> ⚠️ **Interpreting the numbers:** The Go WASM runtime still introduces overhead in Node.js, so TypeScript remains faster today. Use the benchmark as a guardrail—after each optimization pass, re-run `npm run benchmark:wasm` and compare the summary table. The reporter exits cleanly even when the WASM path traps, annotating the affected rows with ⚠️.
 **👉 For detailed WASM usage, see [WASM_GUIDE.md](WASM_GUIDE.md)**
 
 ## Endianness

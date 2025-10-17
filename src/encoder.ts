@@ -147,3 +147,62 @@ function write_value(writer: Writer, value: any) {
         throw new Error('Unsupported data type');
     }
 }
+
+// Export write_value for extension use
+export function write_value_internal(writer: Writer, value: any) {
+    write_value(writer, value);
+}
+
+// ============================================================================
+// Extension-Enhanced Encoding
+// ============================================================================
+
+import { 
+    EncodeOptions, 
+    DEFAULT_ENCODE_OPTIONS, 
+    shouldUseTypedArray,
+    encodeTypedObjectArray 
+} from './extensions';
+
+/**
+ * Encode with automatic format selection (Extension-aware)
+ * 
+ * @param data - Data to encode
+ * @param options - Encoding options
+ * @returns BEVE binary data
+ * 
+ * @example
+ * const users = [
+ *   { name: "Alice", age: 30 },
+ *   { name: "Bob", age: 25 }
+ * ];
+ * 
+ * // Auto-detect: uses typed array if N >= 5
+ * const bytes = encodeAuto(users);
+ */
+export function encodeAuto(data: any, options: EncodeOptions = {}): Uint8Array {
+    const opts = { ...DEFAULT_ENCODE_OPTIONS, ...options };
+    const writer = new Writer();
+    
+    // Check if data should use typed array encoding
+    if (opts.autoDetect && Array.isArray(data) && shouldUseTypedArray(data, opts.minArraySize)) {
+        encodeTypedObjectArray(data, writer);
+    } else if (opts.useTypedSchema && Array.isArray(data) && shouldUseTypedArray(data, 1)) {
+        encodeTypedObjectArray(data, writer);
+    } else {
+        write_value(writer, data);
+    }
+    
+    return writer.buffer.slice(0, writer.offset);
+}
+
+/**
+ * Encode with typed schema (Extension 1)
+ * Forces use of typed object array encoding
+ * 
+ * @param data - Array of objects with same schema
+ * @returns BEVE binary data with Extension 1
+ */
+export function encodeTyped(data: any[]): Uint8Array {
+    return encodeAuto(data, { useTypedSchema: true, minArraySize: 1 });
+}
