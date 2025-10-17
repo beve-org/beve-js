@@ -236,21 +236,25 @@ export function readBeve(buffer: Uint8Array): any {
 
                     return unarray;
                 }
-            case 6: // binary data
+            case 6: // extension or binary data
                 {
-                    const size = read_compressed(buffer, cursor);
-                    if (cursor.value + size > buffer.length) {
-                        throw new Error(`Buffer overflow: binary data size ${size} at cursor ${cursor.value}, buffer length ${buffer.length}`);
-                    }
-                    const data = buffer.subarray(cursor.value, cursor.value + size);
-                    cursor.value += size;
-                    return data;
-                }
-            case 6: // extension
-                {
-                    // Parse extension ID from header
+                    // Check if this is an extension (has extension ID in upper bits)
                     const extId = (header & 0b11111000) >> 3;
-                    return read_extension(extId, buffer, cursor);
+                    
+                    // If extId > 0, it's an extension; otherwise it's binary data
+                    if (extId > 0) {
+                        // Extension
+                        return read_extension(extId, buffer, cursor);
+                    } else {
+                        // Binary data (original case 6)
+                        const size = read_compressed(buffer, cursor);
+                        if (cursor.value + size > buffer.length) {
+                            throw new Error(`Buffer overflow: binary data size ${size} at cursor ${cursor.value}, buffer length ${buffer.length}`);
+                        }
+                        const data = buffer.subarray(cursor.value, cursor.value + size);
+                        cursor.value += size;
+                        return data;
+                    }
                 }
             default:
                 throw new Error(`Unknown type: ${type}`);

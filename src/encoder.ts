@@ -16,6 +16,18 @@ function write_value(writer: Writer, value: any) {
         value = null;
     }
     
+    // Check for Uint8Array BEFORE Array.isArray (because Uint8Array is array-like but should be binary)
+    if (value instanceof Uint8Array) {
+        // binary data
+        let header: number = 6;
+        writer.append_uint8(header);
+        writeCompressed(writer, value.length);
+        writer.ensureCapacity(value.length);
+        writer.buffer.set(value, writer.offset);
+        writer.offset += value.length;
+        return;
+    }
+    
     if (Array.isArray(value)) {
         // Check if it's a typed array (all elements same type)
         if (value.length > 0) {
@@ -109,7 +121,10 @@ function write_value(writer: Writer, value: any) {
     } else if (typeof value === 'string') {
         let header: number = 2;
         writer.append_uint8(header);
-        writeCompressed(writer, value.length);
+        // Use byte length, not character length for UTF-8
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(value);
+        writeCompressed(writer, bytes.length);
         writer.append(value);
     } else if (Array.isArray(value)) {
         let header: number = 5;
@@ -135,14 +150,6 @@ function write_value(writer: Writer, value: any) {
             writer.append(key);
             write_value(writer, value[key]);
         }
-    } else if (value instanceof Uint8Array) {
-        // binary data
-        let header: number = 6;
-        writer.append_uint8(header);
-        writeCompressed(writer, value.length);
-        writer.ensureCapacity(value.length);
-        writer.buffer.set(value, writer.offset);
-        writer.offset += value.length;
     } else {
         throw new Error('Unsupported data type');
     }
