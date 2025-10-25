@@ -66,6 +66,50 @@ export class Writer {
         }
     }
 
+    append_int8(value: number) {
+        if (Number.isInteger(value) && value >= -128 && value <= 127) {
+            // 8-bit signed integer
+            this.ensureCapacity(1);
+            let view = new DataView(this.buffer.buffer);
+            view.setInt8(this.offset, value);
+            this.offset += 1;
+        } else {
+            throw new Error('Value must be an integer between -128 and 127');
+        }
+    }
+
+    append_int16(value: number) {
+        if (Number.isInteger(value) && value >= -32768 && value <= 32767) {
+            // 16-bit signed integer
+            this.ensureCapacity(2);
+            let view = new DataView(this.buffer.buffer);
+            view.setInt16(this.offset, value, true); // little-endian
+            this.offset += 2;
+        } else {
+            throw new Error('Value must be an integer between -32768 and 32767');
+        }
+    }
+
+    append_int32(value: number) {
+        if (Number.isInteger(value) && value >= -2147483648 && value <= 2147483647) {
+            // 32-bit signed integer
+            this.ensureCapacity(4);
+            let view = new DataView(this.buffer.buffer);
+            view.setInt32(this.offset, value, true); // little-endian
+            this.offset += 4;
+        } else {
+            throw new Error('Value must be an integer between -2147483648 and 2147483647');
+        }
+    }
+
+    append_int64(value: bigint) {
+        // 64-bit signed integer
+        this.ensureCapacity(8);
+        let view = new DataView(this.buffer.buffer);
+        view.setBigInt64(this.offset, value, true); // little-endian
+        this.offset += 8;
+    }
+
     append(value: number | string | any[]) {
         if (Array.isArray(value)) {
             // Iterate over each element in the array and append

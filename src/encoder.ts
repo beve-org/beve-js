@@ -104,17 +104,53 @@ function write_value(writer: Writer, value: any) {
         // Check for special values
         if (!Number.isFinite(value)) {
             // Handle Infinity, -Infinity, NaN
-            let header = 1 | 0b01100000; // float64_t
+            let header = 1 | (0b00 << 3) | (3 << 5); // TYPE_NUMBER | FLOAT | 8 bytes
             writer.append_uint8(header);
             writer.append(value);
-        } else if (Number.isInteger(value) && value >= -0x80000000 && value <= 0x7FFFFFFF) {
-            // Integer value in int32 range
-            let header = 1 | 0b01001000; // int32_t
-            writer.append_uint8(header);
-            writer.append(value);
+        } else if (Number.isInteger(value)) {
+            // Integer - pick signed vs unsigned based on sign
+            if (value < 0) {
+                // Negative = Signed integer (NUM_TYPE = 0b01)
+                if (value >= -0x80) {
+                    let header = 1 | (0b01 << 3) | (0 << 5); // int8_t
+                    writer.append_uint8(header);
+                    writer.append_int8(value);
+                } else if (value >= -0x8000) {
+                    let header = 1 | (0b01 << 3) | (1 << 5); // int16_t
+                    writer.append_uint8(header);
+                    writer.append_int16(value);
+                } else if (value >= -0x80000000) {
+                    let header = 1 | (0b01 << 3) | (2 << 5); // int32_t
+                    writer.append_uint8(header);
+                    writer.append_int32(value);
+                } else {
+                    let header = 1 | (0b01 << 3) | (3 << 5); // int64_t
+                    writer.append_uint8(header);
+                    writer.append_int64(BigInt(value));
+                }
+            } else {
+                // Non-negative = Unsigned integer (NUM_TYPE = 0b10)
+                if (value <= 0xFF) {
+                    let header = 1 | (0b10 << 3) | (0 << 5); // uint8_t
+                    writer.append_uint8(header);
+                    writer.append_uint8(value);
+                } else if (value <= 0xFFFF) {
+                    let header = 1 | (0b10 << 3) | (1 << 5); // uint16_t
+                    writer.append_uint8(header);
+                    writer.append_uint16(value);
+                } else if (value <= 0xFFFFFFFF) {
+                    let header = 1 | (0b10 << 3) | (2 << 5); // uint32_t
+                    writer.append_uint8(header);
+                    writer.append_uint32(value);
+                } else {
+                    let header = 1 | (0b10 << 3) | (3 << 5); // uint64_t
+                    writer.append_uint8(header);
+                    writer.append_uint64(value);
+                }
+            }
         } else {
-            // Float value or integer outside int32 range
-            let header = 1 | 0b01100000; // float64_t
+            // Float value
+            let header = 1 | (0b00 << 3) | (3 << 5); // float64_t
             writer.append_uint8(header);
             writer.append(value);
         }
