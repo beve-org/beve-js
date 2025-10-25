@@ -1,0 +1,69 @@
+{
+  "name": "beve-wasm",
+  "version": "1.0.0",
+  "description": "WebAssembly bindings for BEVE (Binary Efficient Versatile Encoding) - Go and Rust implementations",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "require": "./index.cjs"
+    },
+    "./go": {
+      "types": "./go/index.d.ts",
+      "import": "./go/index.js"
+    },
+    "./rust": {
+      "types": "./rust/beve.d.ts",
+      "import": "./rust/index.js"
+    },
+    "./go/beve.wasm": "./go/beve.wasm",
+    "./go/wasm_exec.js": "./go/wasm_exec.js",
+    "./rust/beve_bg.wasm": "./rust/beve_bg.wasm"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "index.cjs",
+    "go/",
+    "rust/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "echo 'WASM binaries are pre-built'",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "beve",
+    "binary",
+    "serialization",
+    "wasm",
+    "webassembly",
+    "encoding",
+    "decoding",
+    "performance",
+    "go",
+    "rust",
+    "messagepack",
+    "cbor"
+  ],
+  "author": "Burak Şentürk <buraksenturk25@gmail.com> (https://github.com/meftunca)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beve-org/beve-js.git",
+    "directory": "wasm"
+  },
+  "bugs": {
+    "url": "https://github.com/beve-org/beve-js/issues"
+  },
+  "homepage": "https://github.com/beve-org/beve-js/tree/main/wasm#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "peerDependencies": {},
+  "devDependencies": {}
+}

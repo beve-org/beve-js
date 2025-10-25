@@ -1,284 +1,153 @@
-# 🌐 BEVE WebAssembly Demo
+# beve-wasm
 
-High-performance binary serialization in the browser using Go + WebAssembly.
+**WebAssembly bindings for BEVE** - Binary Efficient Versatile Encoding
 
-## 📦 What's Included
+High-performance WASM implementations of the BEVE binary format in Go and Rust.
 
-- **`beve.wasm`** - Compiled BEVE library (350KB, 106KB gzipped)
-- **`wasm_exec.js`** - Go WebAssembly glue code
-- **`index.html`** - Interactive demo with benchmarks
-
-## 🚀 Features
-
-- ✅ **Marshal/Unmarshal** JavaScript objects in the browser
-- ✅ **Interactive UI** with real-time size comparison
-- ✅ **Performance Benchmarks** (ops/sec, avg time)
-- ✅ **Example Payloads** (small, medium, large structs)
-- ✅ **Binary Hex Viewer** for encoded data
-- ✅ **~50K ops/sec** on modern browsers
-
-## 🔧 How to Build
+## 📦 Installation
 
 ```bash
-# From project root
-./scripts/build-wasm.sh wasm
+npm install beve-wasm
+# or
+yarn add beve-wasm
+# or
+bun add beve-wasm
 ```
 
-This creates:
-- `build/wasm/beve.wasm` (350KB raw, 106KB gzipped)
-- `build/wasm/wasm_exec.js` (TinyGo glue code)
+## 🚀 Usage
 
-## 🌍 Running the Demo
+### Auto-detection (Recommended)
 
-### Option 1: Python HTTP Server
-
-```bash
-python3 -m http.server 8080
-# Open: http://localhost:8080/build/wasm/
-```
-
-### Option 2: Node.js `http-server`
-
-```bash
-npm install -g http-server
-http-server -p 8080
-# Open: http://localhost:8080/build/wasm/
-```
-
-### Option 3: Go HTTP Server
-
-```bash
-go run -C build/wasm server.go
-# Open: http://localhost:8080/
-```
-
-## 📖 JavaScript API
-
-### Loading WASM Module
+Automatically uses the best available implementation:
 
 ```javascript
-const go = new Go();
-WebAssembly.instantiateStreaming(fetch('beve.wasm'), go.importObject)
-  .then(result => {
-    go.run(result.instance);
-    // beveWasm is now available globally
-  });
+import { encode, decode } from 'beve-wasm';
+
+const data = { id: 123, name: "Alice", scores: [95, 87, 92] };
+const bytes = await encode(data);
+const decoded = await decode(bytes);
 ```
 
-### Marshal (Encode)
+### Go WASM
 
 ```javascript
-const data = {
-  id: 123,
-  name: "Alice",
-  email: "alice@example.com",
-  active: true,
-  tags: ["developer", "golang"]
-};
+import { encode, decode, init } from 'beve-wasm/go';
 
-const result = beveWasm.marshal(data);
-if (result.error) {
-  console.error('Marshal failed:', result.error);
-} else {
-  console.log('Encoded bytes:', result.data);
-  console.log('Size:', result.data.length, 'bytes');
-}
+// Initialize Go WASM runtime
+await init();
+
+const data = { message: "Hello, BEVE!" };
+const bytes = await encode(data);
+const decoded = await decode(bytes);
 ```
 
-### Unmarshal (Decode)
+### Rust WASM
 
 ```javascript
-const encoded = result.data; // Uint8Array from marshal
+import init, { marshal, unmarshal } from 'beve-wasm/rust';
 
-const decoded = beveWasm.unmarshal(encoded);
-if (decoded.error) {
-  console.error('Unmarshal failed:', decoded.error);
-} else {
-  console.log('Decoded object:', decoded.data);
-}
-```
+// Initialize Rust WASM module
+await init();
 
-### Version
-
-```javascript
-const version = beveWasm.version();
-console.log('BEVE Version:', version);
-// Output: "1.2.0-wasm"
-```
-
-### Benchmark
-
-```javascript
-const testData = {id: 1, name: "Test", value: 42};
-const iterations = 10000;
-
-const bench = beveWasm.benchmark(testData, iterations);
-
-console.log('Marshal Results:');
-console.log('  Avg:', bench.marshal.avgMs.toFixed(4), 'ms');
-console.log('  Throughput:', Math.round(bench.marshal.opsPerSec).toLocaleString(), 'ops/sec');
-
-console.log('Unmarshal Results:');
-console.log('  Avg:', bench.unmarshal.avgMs.toFixed(4), 'ms');
-console.log('  Throughput:', Math.round(bench.unmarshal.opsPerSec).toLocaleString(), 'ops/sec');
-
-console.log('Payload Size:', bench.payloadSize, 'bytes');
+const data = { count: 42, items: ["a", "b", "c"] };
+const bytes = marshal(JSON.stringify(data));
+const decoded = JSON.parse(unmarshal(bytes));
 ```
 
 ## 🎯 Performance
 
-Tested on **Apple M2 Max** (Chrome 130):
+| Implementation | Size | Encode (ops/sec) | Decode (ops/sec) |
+|---------------|------|------------------|------------------|
+| **Rust WASM** | 91 KB | ~140K | ~180K |
+| **Go WASM** | 279 KB | ~50K | ~80K |
 
-| Operation | Throughput | Avg Time |
-|-----------|-----------|----------|
-| **Marshal** | ~55K ops/sec | ~18μs |
-| **Unmarshal** | ~45K ops/sec | ~22μs |
-| **Round-trip** | ~25K ops/sec | ~40μs |
+*Benchmarks run on Node.js v20, Apple M1*
 
-### Size Comparison (Medium Struct)
+## 📊 Implementation Details
 
-| Format | Size | vs JSON |
-|--------|------|---------|
-| **JSON** | 170 bytes | 100% |
-| **BEVE** | 120 bytes | **-29%** |
-| **CBOR** | 115 bytes | -32% |
+### Rust WASM (`rust/`)
+- **Size**: 91 KB (wasm-pack optimized)
+- **Build**: `wasm-pack build --target web`
+- **Best for**: Browser environments, edge runtimes
+- **Features**: Zero-copy, SIMD optimizations
 
-> BEVE achieves near-CBOR efficiency while maintaining Go-native types!
+### Go WASM (`go/`)
+- **Size**: 279 KB (TinyGo compiled)
+- **Build**: `tinygo build -o beve.wasm -target wasm`
+- **Best for**: Node.js, server-side
+- **Features**: Full Go runtime, mature implementation
 
-## 🔬 Technical Details
+## 🔧 Advanced Usage
 
-### Build Configuration
-
-**TinyGo Compiler:**
-- Version: 0.39.0+
-- Target: `wasm`
-- Optimization: `-opt=2`
-- GC Mode: `-gc=leaking` (minimal GC for WASM)
-- Debug: `-no-debug` (strip symbols)
-
-**Output Size:**
-- Uncompressed: 350 KB
-- Gzipped: **106 KB** ✅
-- Brotli: ~85 KB
-
-### Browser Compatibility
-
-✅ **Modern Browsers** (2020+):
-- Chrome 90+
-- Firefox 89+
-- Safari 15+
-- Edge 90+
-
-⚠️ **Requirements**:
-- WebAssembly support
-- ES6+ (async/await, Promises)
-- Fetch API
-
-### Memory Usage
-
-- **Initial**: ~2-4 MB (WASM runtime)
-- **Per operation**: <1 KB (pooled buffers)
-- **GC mode**: Leaking (manual management)
-
-## 🛠️ Integration Examples
-
-### React Component
+### Direct WASM File Access
 
 ```javascript
-import { useEffect, useState } from 'react';
+// For custom WASM loaders or bundlers
+import wasmUrl from 'beve-wasm/rust/beve_bg.wasm?url';
+import { initSync } from 'beve-wasm/rust';
 
-function BeveEncoder() {
-  const [beve, setBeve] = useState(null);
+const response = await fetch(wasmUrl);
+const buffer = await response.arrayBuffer();
+initSync(buffer);
+```
+
+### Browser Usage
+
+```html
+<script type="module">
+  import init, { marshal, unmarshal } from 'https://unpkg.com/beve-wasm/rust/beve.js';
   
-  useEffect(() => {
-    const go = new Go();
-    WebAssembly.instantiateStreaming(fetch('/beve.wasm'), go.importObject)
-      .then(result => {
-        go.run(result.instance);
-        setBeve(window.beveWasm);
-      });
-  }, []);
-  
-  const handleEncode = (data) => {
-    if (!beve) return;
-    const result = beve.marshal(data);
-    console.log('Encoded:', result.data);
-  };
-  
-  return <button onClick={() => handleEncode({test: 123})}>Encode</button>;
-}
+  await init();
+  const data = { test: 123 };
+  const binary = marshal(JSON.stringify(data));
+  console.log('Encoded:', binary);
+</script>
 ```
 
-### Node.js (WASI)
+## 📁 Package Structure
 
-```bash
-# Build WASI target
-./scripts/build-wasm.sh wasi
-
-# Run with Node.js
-node --experimental-wasi-unstable-preview1 test.js
+```
+beve-wasm/
+├── index.js          # Auto-detection entry point
+├── index.d.ts        # TypeScript definitions
+├── go/               # Go WASM implementation
+│   ├── beve.wasm     # Go WASM binary (279 KB)
+│   ├── wasm_exec.js  # Go WASM runtime (16 KB)
+│   └── index.js      # Go wrapper
+└── rust/             # Rust WASM implementation
+    ├── beve_bg.wasm  # Rust WASM binary (91 KB)
+    ├── beve.js       # Rust JS glue (7 KB)
+    └── beve.d.ts     # TypeScript types
 ```
 
-### Edge Functions (Cloudflare Workers)
+## 🌐 Platform Support
 
-```javascript
-// worker.js
-import { instantiate } from './beve.wasm';
+- ✅ Node.js 16+
+- ✅ Modern browsers (Chrome, Firefox, Safari, Edge)
+- ✅ Deno
+- ✅ Bun
+- ✅ Edge runtimes (Cloudflare Workers, Vercel Edge)
 
-export default {
-  async fetch(request) {
-    const wasm = await instantiate();
-    const data = {id: 1, name: "Edge Data"};
-    const encoded = wasm.marshal(data);
-    
-    return new Response(encoded.data, {
-      headers: {'Content-Type': 'application/beve'}
-    });
-  }
-}
-```
+## 🔗 Related Packages
 
-## 🐛 Troubleshooting
+- **[beve](https://www.npmjs.com/package/beve)** - Pure TypeScript implementation (no WASM)
+- **[beve-go](https://github.com/beve-org/beve-go)** - Go implementation
+- **[beve-rs](https://github.com/beve-org/beve-rs)** - Rust implementation
 
-### "Failed to load WASM module"
+## 📖 Documentation
 
-**Solution**: Ensure server has correct MIME type:
-```nginx
-# nginx.conf
-types {
-    application/wasm wasm;
-}
-```
-
-### "beveWasm is undefined"
-
-**Solution**: Wait for WASM to load:
-```javascript
-await new Promise(resolve => setTimeout(resolve, 100));
-console.log(typeof beveWasm); // "object"
-```
-
-### High memory usage
-
-**Solution**: GC mode is "leaking" for performance. If memory is critical:
-```bash
-# Rebuild with conservative GC
-tinygo build -target=wasm -gc=conservative -o beve.wasm ./wasm/main.go
-```
-
-## 📚 Resources
-
-- **TinyGo Docs**: https://tinygo.org/docs/guides/webassembly/
-- **Go WASM Docs**: https://github.com/golang/go/wiki/WebAssembly
-- **BEVE Spec**: [SPECIFICATION_COMPLIANCE.md](../../SPECIFICATION_COMPLIANCE.md)
+- [BEVE Specification](https://github.com/beve-org/beve-go/blob/main/SPECIFICATION.md)
+- [API Documentation](https://beve.dev)
+- [Examples](https://github.com/beve-org/beve-js/tree/main/examples)
 
 ## 🤝 Contributing
 
-Found a bug or have a feature request for WASM support? 
+Contributions are welcome! Please see [CONTRIBUTING.md](https://github.com/beve-org/beve-js/blob/main/CONTRIBUTING.md).
 
-[Open an issue](https://github.com/beve-org/beve-go/issues) or submit a PR!
+## 📄 License
+
+MIT © [Burak Şentürk](https://github.com/meftunca)
 
 ---
 
-**Built with ❤️ for the modern web**  
-🌐 **WebAssembly** | 🚀 **TinyGo** | ⚡ **BEVE**
+**Built with** ❤️ **by the BEVE community**
