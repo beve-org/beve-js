@@ -1,21 +1,11 @@
 # BEVE - Binary Efficient Versatile Encoding
-Version 1.0 · **🚀 Now with WebAssembly Support!**
+Version 1.0 · **TypeScript/JavaScript Implementation**
 
 *High performance, tagged binary data specification like JSON, MessagePack, CBOR, etc. But, designed for higher performance and scientific computing.*
 
 > See [Discussions](https://github.com/stephenberry/eve/discussions) for polls and active development on the specification.
 
-## ✨ New: WebAssembly Acceleration
-
-BEVE-JS now includes **automatic WebAssembly acceleration** for maximum performance! The library automatically uses WASM when available and gracefully falls back to TypeScript when not.
-
-🎯 **Features:**
-- 🚀 **1.5x faster** with WASM acceleration
-- 🔄 **Zero configuration** - automatic detection and fallback
-- 🌐 **Universal** - works in Node.js, Browser, and edge runtimes
-- 📦 **Same API** - no code changes needed
-
-[📚 See WASM_GUIDE.md for detailed usage →](WASM_GUIDE.md)
+## Features
 
 - Maps to and from JSON
 - Schema less, fully described, like JSON (can be used in documents)
@@ -72,41 +62,83 @@ bun add beve
 ```typescript
 import { encode, decode } from 'beve';
 
-// Encode data (automatically uses WASM if available)
+// Encode data
 const data = { id: 123, name: "Alice", scores: [95, 87, 92] };
-const bytes = await encode(data);
+const bytes = encode(data);
 
 // Decode data
-const decoded = await decode(bytes);
+const decoded = decode(bytes);
 console.log(decoded); // { id: 123, name: "Alice", scores: [95, 87, 92] }
 ```
 
-### Synchronous API
+### API Aliases
 
 ```typescript
-import { encodeSync, decodeSync } from 'beve';
+import { marshal, unmarshal, marshalSync, unmarshalSync } from 'beve';
 
-const bytes = encodeSync(data);  // Uses TypeScript implementation; WASM prepares in background for async calls
-const decoded = decodeSync(bytes);
+// All these are equivalent
+const bytes1 = encode(data);
+const bytes2 = marshal(data);
+const bytes3 = encodeSync(data);
+const bytes4 = marshalSync(data);
 
+// All these are equivalent
+const data1 = decode(bytes);
+const data2 = unmarshal(bytes);
+const data3 = decodeSync(bytes);
+const data4 = unmarshalSync(bytes);
 ```
 
-### Global API (JSON-style convenience)
+---
 
-When the package is imported it automatically injects a `beve` helper on `globalThis`, mirroring the ergonomics of `JSON.stringify` / `JSON.parse`:
+## 🚀 WebAssembly Integration (WASM)
+
+For **maximum performance**, use the WebAssembly bindings with Go or Rust implementations:
+
+```bash
+npm install beve-wasm
+```
+
+### Auto-detection (Recommended)
 
 ```typescript
-const payload = beve.encode({ id: 42 });
-const value = beve.decode(payload);
+import { encode, decode, init } from 'beve-wasm';
 
-// Async helpers are also available
-await beve.init();          // ensures WASM is ready (no-op if already loaded)
-const fast = await beve.encodeAsync({ id: 42 });
+await init(); // Auto-selects Rust (faster) or Go
+
+const data = { id: 123, name: "Alice", scores: [95, 87, 92] };
+const bytes = await encode(data);
+const decoded = await decode(bytes);
 ```
 
-The helper automatically prefers the WASM pipeline whenever the platform supports it, and gracefully falls back to the TypeScript implementation otherwise.
+### Performance Comparison
 
-> ℹ️ **Tip for custom bundlers:** If your build pipeline serves the BEVE assets from a non-default location, set `globalThis.__BEVE_BASE_URL__` (for example `new URL('./node_modules/beve/wasm/', document.baseURI).toString()`) before calling any BEVE APIs so the loader can resolve `beve.wasm` and `wasm_exec.js` correctly.
+| Implementation | Encode Speed | Binary Size | Notes |
+|----------------|-------------|-------------|-------|
+| **Rust WASM** | ~140K ops/sec | 94 KB | Fastest, official v0.3.0 |
+| **Go WASM** | ~50K ops/sec | 279 KB | Spec-compliant, TinyGo |
+| **JavaScript** | ~35K ops/sec | 15 KB | Pure JS, no WASM overhead |
+
+### Go WASM
+
+```typescript
+import { encode, decode, init } from 'beve-wasm/go';
+
+await init();
+const bytes = await encode(data);
+```
+
+### Rust WASM
+
+```typescript
+import init, { encode, decode } from 'beve-wasm/rust';
+
+await init();
+const bytes = encode(JSON.stringify(data));
+const decoded = JSON.parse(decode(bytes));
+```
+
+**See [beve-wasm documentation](https://www.npmjs.com/package/beve-wasm) for details.**
 
 ---
 
@@ -281,28 +313,6 @@ node examples/extensions-demo.ts
 ---
 
 
-## 🧪 WASM vs TypeScript Benchmark
-
-Run the curated benchmark to measure the raw Go/WASM module against the TypeScript implementation:
-
-```bash
-npm install
-npm run benchmark:wasm
-```
-
-The script executes three fixture sizes, captures encode/decode latency (ms/op), and prints a summary table showing the relative speedup. It calls the WASM module directly—no fallbacks—so you can spot regressions quickly.
-
-### Sample results (Node.js v24.4.1 · macOS)
-
-| Dataset | TS Encode (ms/op) | WASM Encode (ms/op) | WASM vs TS | TS Decode (ms/op) | WASM Decode (ms/op) | Notes |
-| ------- | ----------------- | ------------------- | ---------- | ----------------- | ------------------- | ----- |
-| small   | 0.0065            | 0.0356              | 0.18×      | 0.0034            | 0.0164              | WASM currently slower in Node due to Go runtime bridge overhead. |
-| medium  | 0.0907            | 0.5520              | 0.16×      | 0.0408            | 0.1845              | Same trend for mid-size payloads. |
-| large   | 4.1348            | ⚠️ unreachable       | n/a        | 2.2669            | ⚠️ unreachable       | Current WASM decoder traps on very large payloads; results fall back to TypeScript. |
-
-> ⚠️ **Interpreting the numbers:** The Go WASM runtime still introduces overhead in Node.js, so TypeScript remains faster today. Use the benchmark as a guardrail—after each optimization pass, re-run `npm run benchmark:wasm` and compare the summary table. The reporter exits cleanly even when the WASM path traps, annotating the affected rows with ⚠️.
-**👉 For detailed WASM usage, see [WASM_GUIDE.md](WASM_GUIDE.md)**
-
 ## Endianness
 
 The endianness must be `little endian`.
@@ -315,17 +325,17 @@ The standard extension for BEVE files is `.beve`
 
 ### JavaScript/TypeScript
 
-- **[beve-js](https://github.com/beve-org/beve-js)** - High-performance implementation with WebAssembly acceleration
-  - 🚀 WASM + TypeScript hybrid
-  - 📦 Works in Node.js, Browser, and edge runtimes
-  - ⚡ 1.5x faster with WASM acceleration
+- **[beve-js](https://github.com/beve-org/beve-js)** - High-performance TypeScript implementation
+  -  Works in Node.js, Browser, and edge runtimes
+  - ⚡ Fast binary encoding (30K+ ops/sec)
+  - 🔄 Zero dependencies
 
 ### Go
 
 - **[beve-go](https://github.com/beve-org/beve-go)** - Highly optimized Go implementation
   - 5.6× faster than CBOR
   - 64% smaller payloads than JSON
-  - WASM compilation support
+  - Production-ready with extensive testing
 
 ### C++
 
